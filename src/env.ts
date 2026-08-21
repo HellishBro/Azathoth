@@ -3,7 +3,8 @@ export interface Environ {
     GUILD_ID: string,
     CONTACT_CHANNEL_ID: string,
     TICKETS_CATEGORY: string,
-    RUNTIME_JSON: string
+    DATABASE: string,
+    ADMIN_ROLE_ID: string
 }
 
 const ENV_VARS = [
@@ -11,7 +12,8 @@ const ENV_VARS = [
     "GUILD_ID",
     "CONTACT_CHANNEL_ID",
     "TICKETS_CATEGORY",
-    "RUNTIME_JSON"
+    "DATABASE",
+    "ADMIN_ROLE_ID"
 ]
 
 export let environ: Environ;
