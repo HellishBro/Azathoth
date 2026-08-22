@@ -1,7 +1,7 @@
 import { Client, EmbedBuilder, GuildChannel, Message } from "@fluxerjs/core";
 import { upsert_scripted_message, get_scripted_message, get_scripted_message_id } from "./db.js";
 import { parse_text } from "./features/scripted_messages.js";
-import { split_space } from "../util.js";
+import { split_space } from "./util.js";
 
 interface ScriptInfo {
     name: string,
@@ -17,10 +17,12 @@ export function register_script(
     description: string,
     text: string,
     func: (client: Client) => Promise<void>
-) {
-    scripts[invoke] = { name, description, func };
-    upsert_scripted_message(invoke, text);
-    console.log(`Registered script ${invoke}`);
+): () => void {
+    return () => {
+        scripts[invoke] = { name, description, func };
+        upsert_scripted_message(invoke, text);
+        console.log(`Registered script ${invoke}`);
+    };
 }
 
 export async function parse_scripts_command(
@@ -32,7 +34,10 @@ export async function parse_scripts_command(
 
     if (["run", "edit", "info", "finalize"].includes(subcommand)) {
         let [key, r] = split_space(rest);
-        if (!(key in scripts)) return;
+        if (!(key in scripts)) {
+            await message.reply(`${key} is not a valid script!`);
+            return;
+        }
         let script = scripts[key];
         if (subcommand == "run") {
             let msg = await message.reply(`Executing script ${key}.`);
@@ -54,7 +59,7 @@ export async function parse_scripts_command(
                 })
                 .addFields({
                     name: "Message",
-                    value: message_id ? `https://web.fluxer.app/channels/${
+                    value: message_id.channel_id ? `https://web.fluxer.app/channels/${
                         (await client.channels.resolve(message_id.channel_id) as GuildChannel).guildId
                     }/${message_id.channel_id}/${message_id.message_id}` : "N/A"
                 })
@@ -66,6 +71,7 @@ export async function parse_scripts_command(
                 embeds: [embed]
             })
         } else if (subcommand == "finalize") {
+            console.log([rest, r]);
             upsert_scripted_message(key, r);
             await (await message.reply({
                 embeds: [

@@ -1,9 +1,15 @@
-import { parse_command } from './commands.js';
 import { environ, load_env } from './env.js';
+import { database_init } from './db.js';
 
 load_env();
+await database_init();
 
 import { Client, Events, Guild } from '@fluxerjs/core';
+import { parse_command } from './commands.js';
+
+import load_scripts from "./load_scripts.js";
+
+load_scripts();
 
 let client = new Client();
 

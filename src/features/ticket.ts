@@ -2,8 +2,8 @@ import { environ } from "./../env.js";
 import { register_script } from "../scripts.js";
 import { run_script } from "./scripted_messages.js";
 
-register_script(
-    "make_contacts",
+export default register_script(
+    "make_contact",
     "Make contact message",
     "Make the \"Contact Administration\" message in CONTACT_CHANNEL_ID",
     `===

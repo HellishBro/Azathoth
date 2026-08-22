@@ -5,7 +5,7 @@ import { readdir, readFile } from "node:fs/promises";
 export let database: DB;
 
 
-export async function init() {
+export async function database_init() {
     database = new Database(environ.DATABASE);
     database.pragma("foreign_key = ON");
     database.pragma("journal_mode = WAL");
@@ -26,16 +26,18 @@ async function migrate() {
         migrated = database.prepare<[], string>(
             "SELECT used FROM migrations"
         ).pluck().all();
-    } catch (e) {}
+    } catch (e) {
+        console.log(e);
+    }
     for (let file of files) {
         if (file.endsWith(".sql") && !migrated.includes(file)) {
+            console.log(file);
             let content = await readFile(migration_directory + file, "utf-8");
-            database.transaction(() => {
-                database.exec(content);
-                database.prepare<string>(
-                    "INSERT INTO migrations (used) VALUES (?)"
-                ).run(file);
-            });
+            database.exec(content);
+            database.prepare<string>(
+                "INSERT INTO migrations (used) VALUES (?)"
+            ).run(file);
+            console.log(`Migrating to ${file}`);
         }
     }
 }
@@ -45,14 +47,12 @@ export function upsert_scripted_message(
     id: string,
     text: string
 ) {
-    database.transaction(() => {
-        database.prepare<{
-            id: string,
-            text: string
-        }>(
-            "INSERT INTO scripted_messages (id, text) VALUES (@id, @text) ON CONFLICT(id) REPLACE"
-        ).run({id, text});
-    });
+    database.prepare<{
+        id: string,
+        text: string
+    }>(
+        "INSERT INTO scripted_messages (id, text) VALUES (@id, @text) ON CONFLICT(id) DO UPDATE SET text=@text WHERE id=@id"
+    ).run({id, text});
 }
 
 
@@ -70,15 +70,13 @@ export function change_scripted_message_id(
     channel_id: string,
     message_id: string
 ) {
-    database.transaction(() => {
-        database.prepare<{
-            id: string,
-            channel_id: string,
-            message_id: string
-        }>(
-            "UPDATE scripted_messages SET channel_id = @channel_id, message_id = @message_id WHERE id = @id"
-        ).run({id, channel_id, message_id});
-    })
+    database.prepare<{
+        id: string,
+        channel_id: string,
+        message_id: string
+    }>(
+        "UPDATE scripted_messages SET channel_id = @channel_id, message_id = @message_id WHERE id = @id"
+    ).run({id, channel_id, message_id});
 }
 
 
@@ -87,11 +85,17 @@ export function get_scripted_message_id(
 ): {
     message_id: string,
     channel_id: string
-} | undefined {
+} | {
+    message_id: null,
+    channel_id: null
+} {
     return database.prepare<{id: string}, {
         message_id: string,
-        channel_id: string
+        channel_id: string 
+    } | {
+        message_id: null,
+        channel_id: null
     }>(
         "SELECT message_id, channel_id FROM scripted_messages WHERE id = @id"
-    ).get({id});
+    ).get({id})!;
 }
