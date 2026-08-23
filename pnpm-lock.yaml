@@ -11,22 +11,28 @@ importers:
       '@fluxerjs/core':
         specifier: ^2.2.0
         version: 2.2.0
-      '@types/better-sqlite3':
-        specifier: ^9.6.0
-        version: 9.6.0
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
       dotenv-cli:
         specifier: ^11.0.0
         version: 11.0.0
+      node-cleanup:
+        specifier: ^2.1.2
+        version: 2.1.2
       zod:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^9.6.0
+        version: 9.6.0
       '@types/node':
         specifier: ^26.2.0
         version: 26.2.0
+      '@types/node-cleanup':
+        specifier: ^2.1.5
+        version: 2.1.5
       tsx:
         specifier: ^4.23.12
         version: 4.23.12
@@ -223,6 +229,9 @@ packages:
   '@types/better-sqlite3@9.6.0':
     resolution: {integrity: sha512-ZEEwBSgMu7GYJOynoagg5X9JbxfL6dTJDsgViJIqh67jV44kyOr9RXfmFjLK5rzC4MWssP06t9hu/JwGDnUbCg==}
 
+  '@types/node-cleanup@2.1.5':
+    resolution: {integrity: sha512-+82RAk5uYiqiMoEv2fPeh03AL4pB5d3TL+Pf+hz31Mme6ECFI1kRlgmxYjdSlHzDbJ9yLorTnKi4Op5FA54kQQ==}
+
   '@types/node@26.2.0':
     resolution: {integrity: sha512-5IviulTZeRNp2vAJ514cc/HUlY5nZ9fCbq9DMyC52BrhFZACo3nI0R7qBxhQmo/d27NFe96ur/b7Wwxklda+kg==}
 
@@ -389,6 +398,9 @@ packages:
   node-addon-api@8.9.2:
     resolution: {integrity: sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==}
     engines: {node: ^18 || ^20 || >= 21}
+
+  node-cleanup@2.1.2:
+    resolution: {integrity: sha512-qN8v/s2PAJwGUtr1/hYTpNKlD6Y9rc4p8KSmJXyGdYGZsDGKXrGThikLFP9OCHFeLeEpQzPwiAtdIvBLqm//Hw==}
 
   path-key@3.1.1:
     resolution: {integrity: sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==}
@@ -562,6 +574,8 @@ snapshots:
     dependencies:
       '@types/node': 26.2.0
 
+  '@types/node-cleanup@2.1.5': {}
+
   '@types/node@26.2.0':
     dependencies:
       undici-types: 8.3.0
@@ -688,6 +702,8 @@ snapshots:
   minimist@1.2.8: {}
 
   node-addon-api@8.9.2: {}
+
+  node-cleanup@2.1.2: {}
 
   path-key@3.1.1: {}
 

@@ -1,6 +1,6 @@
 import { Client, Message } from "@fluxerjs/core";
 import { environ } from "./env.js";
-import { parse_scripts_command } from "./scripts.js";
+import { parse_scripts_command } from "./features/scripts.js";
 import { split_space } from "./util.js";
 
 export async function parse_command(

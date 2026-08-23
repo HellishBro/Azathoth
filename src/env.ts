@@ -1,37 +1,22 @@
-export interface Environ {
-    TOKEN: string,
-    GUILD_ID: string,
-    CONTACT_CHANNEL_ID: string,
-    TICKETS_CATEGORY: string,
-    DATABASE: string,
-    ADMIN_ROLE_ID: string
-}
+import { z } from "zod";
 
-const ENV_VARS = [
-    "TOKEN",
-    "GUILD_ID",
-    "CONTACT_CHANNEL_ID",
-    "TICKETS_CATEGORY",
-    "DATABASE",
-    "ADMIN_ROLE_ID"
-]
+const ENV_VARS = z.object({
+    TOKEN: z.string(),
+    GUILD_ID: z.string(),
+    CONTACT_CHANNEL_ID: z.string(),
+    TICKETS_CATEGORY: z.string(),
+    DATABASE: z.string(),
+    ADMIN_ROLE_ID: z.string(),
+    RULES_CHANNEL: z.string(),
+    LOG_CHANNEL_ID: z.string(),
+    MAX_TICKETS_PER_USER: z.coerce.number()
+});
+
+export type Environ = z.infer<typeof ENV_VARS>;
 
 export let environ: Environ;
 
 export function load_env(): Environ {
-    let env: Partial<Environ> = {};
-    let success = true;
-    for (let name of ENV_VARS) {
-        if (!(name in process.env)) {
-            console.error(`The environmental variable ${name} is not found.`);
-            success = false;
-        } else {
-            env[name as keyof Environ] = process.env[name];
-        }
-    }
-    if (!success) {
-        throw new Error();
-    }
-    environ = env as Environ;
+    environ = ENV_VARS.parse(process.env);
     return environ;
 }

@@ -1,7 +1,7 @@
 import { Client, EmbedBuilder, GuildChannel, Message } from "@fluxerjs/core";
-import { upsert_scripted_message, get_scripted_message, get_scripted_message_id } from "./db.js";
-import { parse_text } from "./features/scripted_messages.js";
-import { split_space } from "./util.js";
+import { parse_text } from "./scripted_messages.js";
+import { split_space } from "../util.js";
+import { database } from "../db/db.js";
 
 interface ScriptInfo {
     name: string,
@@ -17,12 +17,10 @@ export function register_script(
     description: string,
     text: string,
     func: (client: Client) => Promise<void>
-): () => void {
-    return () => {
-        scripts[invoke] = { name, description, func };
-        upsert_scripted_message(invoke, text);
-        console.log(`Registered script ${invoke}`);
-    };
+) {
+    scripts[invoke] = { name, description, func };
+    upsert_scripted_message(invoke, text);
+    console.log(`Registered script ${invoke}`);
 }
 
 export async function parse_scripts_command(
@@ -59,7 +57,7 @@ export async function parse_scripts_command(
                 })
                 .addFields({
                     name: "Message",
-                    value: message_id.channel_id ? `https://web.fluxer.app/channels/${
+                    value: message_id ? `https://web.fluxer.app/channels/${
                         (await client.channels.resolve(message_id.channel_id) as GuildChannel).guildId
                     }/${message_id.channel_id}/${message_id.message_id}` : "N/A"
                 })
@@ -82,4 +80,62 @@ export async function parse_scripts_command(
             })).reply(parse_text(r));
         }
     }
+}
+
+export function upsert_scripted_message(
+    id: string,
+    text: string
+) {
+    database.prepare<{
+        id: string,
+        text: string
+    }>(
+        "INSERT INTO scripted_messages (id, text) VALUES (@id, @text) ON CONFLICT(id) DO UPDATE SET text=@text WHERE id=@id"
+    ).run({id, text});
+}
+
+
+export function get_scripted_message(
+    id: string
+): string | undefined {
+    return database.prepare<{id: string}, string>(
+        "SELECT text FROM scripted_messages WHERE id = @id"
+    ).pluck().get({id});
+}
+
+
+export function change_scripted_message_id(
+    id: string,
+    channel_id: string,
+    message_id: string
+) {
+    database.prepare<{
+        id: string,
+        channel_id: string,
+        message_id: string
+    }>(
+        "UPDATE scripted_messages SET channel_id = @channel_id, message_id = @message_id WHERE id = @id"
+    ).run({id, channel_id, message_id});
+}
+
+
+export function get_scripted_message_id(
+    id: string
+): {
+    message_id: string,
+    channel_id: string
+} | undefined {
+    let dat = database.prepare<{id: string}, {
+        message_id: string,
+        channel_id: string 
+    } | {
+        message_id: null,
+        channel_id: null
+    }>(
+        "SELECT message_id, channel_id FROM scripted_messages WHERE id = @id"
+    ).get({id})!;
+    if (dat.message_id == null) {
+        return undefined;
+    }
+    return dat;
 }

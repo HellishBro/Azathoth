@@ -1,5 +1,5 @@
 import { Client, EmbedBuilder, Message, MessageSendOptions } from "@fluxerjs/core";
-import { get_scripted_message } from "../db.js";
+import { change_scripted_message_id, get_scripted_message } from "./scripts.js";
 
 export function parse_text(text: string): MessageSendOptions {
     let options: MessageSendOptions = {};
@@ -20,9 +20,12 @@ export async function run_script(
     script: string,
     channel: string
 ): Promise<Message | undefined> {
+    console.log("run script", script);
     let text = get_scripted_message(script);
     if (!text)
         return undefined;
     let options = parse_text(text);
-    return await client.channels.send(channel, options);
+    let message = await client.channels.send(channel, options);
+    change_scripted_message_id(script, channel, message.id);
+    return message;
 }
