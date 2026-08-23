@@ -9,6 +9,8 @@ const ENV_VARS = z.object({
     ADMIN_ROLE_ID: z.string(),
     RULES_CHANNEL: z.string(),
     LOG_CHANNEL_ID: z.string(),
+    INFORMATION_CHANNEL: z.string(),
+    VERIFIED_ROLE: z.string(),
     MAX_TICKETS_PER_USER: z.coerce.number()
 });
 

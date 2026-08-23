@@ -131,10 +131,10 @@ export function get_scripted_message_id(
     } | {
         message_id: null,
         channel_id: null
-    }>(
+    } | undefined>(
         "SELECT message_id, channel_id FROM scripted_messages WHERE id = @id"
     ).get({id})!;
-    if (dat.message_id == null) {
+    if (dat == undefined || dat.message_id == null) {
         return undefined;
     }
     return dat;

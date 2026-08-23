@@ -1,21 +1,21 @@
 import { Client, Message } from "@fluxerjs/core";
-import { environ } from "./env.js";
 import { parse_scripts_command } from "./features/scripts.js";
-import { split_space } from "./util.js";
+import { ErrorType, is_admin, send_error, split_space } from "./util.js";
+import { parse_ticket_command } from "./features/ticket.js";
 
 export async function parse_command(
     client: Client,
     message: Message
 ) {
-    let guild = await message.resolveGuild();
-    if (!guild) return;
-    let member = await guild.fetchMember(message.author.id)!;
-    if (!member.roles.has(environ.ADMIN_ROLE_ID)) return;
     let self_mention = `<@${client.user!.id}>`;
     if (!message.content.startsWith(self_mention)) return;
     let stripped = message.content.slice(self_mention.length).trim();
     let [command, rest] = split_space(stripped);
     if (command == "scripts") {
-        parse_scripts_command(client, message, rest);
+        if (!await is_admin(client, message.author.id)) return await send_error(message, ErrorType.UNAUTHORIZED);
+        await parse_scripts_command(client, message, rest);
+    }
+    if (command == "ticket") {
+        await parse_ticket_command(client, message, rest);
     }
 }

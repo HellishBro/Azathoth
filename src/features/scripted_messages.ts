@@ -3,13 +3,20 @@ import { change_scripted_message_id, get_scripted_message } from "./scripts.js";
 
 export function parse_text(text: string): MessageSendOptions {
     let options: MessageSendOptions = {};
-    let [content, embed_title, embed_description] = text.split("===").map(t => t.trim());
-    if (embed_title) {
-        options.embeds = [
-            new EmbedBuilder()
-                .setTitle(embed_title)
-                .setDescription(embed_description)
-        ];
+    let [content, ...embeds] = text.split("===").map(t => t.trim());
+    if (embeds) {
+        let e = [];
+
+        for (let i = 0; i < embeds.length;) {
+            e.push(
+                new EmbedBuilder()
+                    .setTitle(embeds[i])
+                    .setDescription(embeds[i + 1])
+            );
+            i += 2;
+        }
+
+        options.embeds = e;
     }
     options.content = content;
     return options;
@@ -20,7 +27,6 @@ export async function run_script(
     script: string,
     channel: string
 ): Promise<Message | undefined> {
-    console.log("run script", script);
     let text = get_scripted_message(script);
     if (!text)
         return undefined;
