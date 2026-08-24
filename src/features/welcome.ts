@@ -47,7 +47,7 @@ Agreement
 ===
 React to the ✅ emoji to gain access to the rest of the guild!`,
         async (client) => {
-            let message = await run_script(client, "welcome", environ.INFORMATION_CHANNEL);
+            let message = await run_script(client, "welcome", environ.RULES_CHANNEL);
             welcome_message = undefined;
             if (message) {
                 await message.react("✅");
@@ -57,6 +57,7 @@ React to the ✅ emoji to gain access to the rest of the guild!`,
 
     with_client("Listening to verification reaction", client => {
         client.on(Events.MessageReactionAdd, async ({
+            reaction,
             emoji,
             user,
             messageId: message_id,
@@ -70,9 +71,11 @@ React to the ✅ emoji to gain access to the rest of the guild!`,
             if (!(message_id == welcome_message.message_id && channel_id == welcome_message.channel_id)) return;
             if (emoji.name == "✅") {
                 let member = await (await client.guilds.fetch(environ.GUILD_ID)).fetchMember(user.id);
-                if (!member || member.roles.has(environ.VERIFIED_ROLE)) return;
-                await member.roles.add(environ.ADMIN_ROLE_ID);
+                if (member && !member.roles.has(environ.VERIFIED_ROLE)) {
+                    await member.roles.add(environ.VERIFIED_ROLE);
+                }
             }
+            await (await reaction.fetchMessage()).removeReaction(emoji, user.id);
         })
     });
 }

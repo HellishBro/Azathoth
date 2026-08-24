@@ -2,7 +2,7 @@ import { environ } from "./../env.js";
 import { get_scripted_message_id, register_script } from "./scripts.js";
 import { parse_text, run_script } from "./scripted_messages.js";
 import { with_client } from "../event.js";
-import { ChannelType, Client, Events, GuildChannel, Message, OverwriteType, PermissionFlags, resolvePermissionsToBitfield, Routes, User } from "@fluxerjs/core";
+import { ChannelType, Client, Events, Message, OverwriteType, PermissionFlags, resolvePermissionsToBitfield, Routes, User } from "@fluxerjs/core";
 import { database } from "../db/db.js";
 import { ErrorType, is_admin, send_error, split_space } from "../util.js";
 
