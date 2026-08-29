@@ -2,6 +2,7 @@ import { Client, Message } from "@fluxerjs/core";
 import { parse_scripts_command } from "./features/scripts.js";
 import { ErrorType, is_admin, send_error, split_space } from "./util.js";
 import { parse_ticket_command } from "./features/ticket.js";
+import { parse_bot_db_command } from "./features/bots.js";
 
 export async function parse_command(
     client: Client,
@@ -17,5 +18,8 @@ export async function parse_command(
     }
     if (command == "ticket") {
         await parse_ticket_command(client, message, rest);
+    }
+    if (command == "bot") {
+        await parse_bot_db_command(client, message, rest);
     }
 }

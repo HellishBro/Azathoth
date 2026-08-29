@@ -1,14 +1,23 @@
 import { database } from "./db.js"
 
 export enum BotType {
-    STANDARD, USERBOT
+    STANDARD = 0, USERBOT = 1
 }
 
 export interface Bot {
     id: string,
     owner: string,
     prefix: string,
-    type: BotType
+    type: BotType,
+    registered: boolean
+}
+
+interface BotDB {
+    id: string,
+    owner: string,
+    prefix: string,
+    type: number,
+    registered: number
 }
 
 export interface BotLBStats {
@@ -26,20 +35,30 @@ export interface BotCommands {
 }
 
 export function fetch_bot(id: string): Bot | undefined {
-    return (
+    let dat = (
         database
-            .prepare<{id: string}, Bot>("SELECT id, owner, prefix, type FROM bots WHERE id = @id")
+            .prepare<{id: string}, BotDB>(
+                "SELECT id, owner, prefix, type, registered FROM bots WHERE id = @id"
+            )
             .get({id})
     );
+    if (dat == undefined) return;
+    return {...dat, registered: dat.registered == 1};
 }
 
 export function upsert_bot(bot: Bot) {
     database
-        .prepare<Bot, unknown>(`
-            INSERT INTO bots (id, owner, prefix, type) VALUES (@id, @owner, @prefix, @type)
-            ON CONFLICT (id) DO UPDATE SET owner = @owner, prefix = @prefix, type = @type WHERE id = @id
+        .prepare<BotDB, unknown>(`
+            INSERT INTO bots (id, owner, prefix, type, registered)
+            VALUES (@id, @owner, @prefix, @type, @registered)
+            ON CONFLICT (id) DO UPDATE SET
+            owner = @owner, prefix = @prefix, type = @type, registered = @registered
+            WHERE id = @id
         `)
-        .run(bot);
+        .run({
+            ...bot,
+            registered: bot.registered ? 1 : 0
+        });
 }
 
 export function fetch_leaderboard(id: string): BotLBStats | undefined {

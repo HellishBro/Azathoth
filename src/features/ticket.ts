@@ -5,6 +5,7 @@ import { with_client } from "../event.js";
 import { ChannelType, Client, Events, Message, OverwriteType, PermissionFlags, resolvePermissionsToBitfield, Routes, User } from "@fluxerjs/core";
 import { database } from "../db/db.js";
 import { ErrorType, is_admin, send_error, split_space } from "../util.js";
+import { bot_invite_app } from "./bots.js";
 
 enum TicketChannelType {
     ADMINISTRATIVE, BOT_INVITE
@@ -87,7 +88,7 @@ React with 🤖 to create a bot invite application.`,
 
 export async function parse_ticket_command(client: Client, message: Message, content: string) {
     let [subcommand, rest] = split_space(content);
-    if (["finalize", "reopen", "delete"].includes(subcommand)) {
+    if (["finalize", "reopen", "close"].includes(subcommand)) {
         let data = database
             .prepare<{channel_id: string}, {
                 initiator: string,
@@ -127,11 +128,16 @@ Ticket Reopened
 This ticket has been reopened.
 Finalize this ticket with \`@${client.user!.username} ticket finalize\`.`));
             await client.channels.send(environ.LOG_CHANNEL_ID, `<@${message.author.id}> has reopened the ticket in <#${message.channelId}>`);
-        } else if (subcommand == "delete") {
+        } else if (subcommand == "close") {
             if (!data.finalized) return await send_error(message, "Ticket needs to be finalized to be deleted.");
             if (!await is_admin(client, message.author.id)) return await send_error(message, ErrorType.UNAUTHORIZED);
 
             await client.rest.delete(Routes.channel(message.channelId)); // ugly
+            database
+                .prepare<{channel_id: string}, unknown>(
+                    "DELETE FROM tickets WHERE channel_id = @channel_id"
+                )
+                .run({channel_id: message.channelId});
             await client.channels.send(environ.LOG_CHANNEL_ID, `<@${message.author.id}> has deleted the ticket channel opened by <@${data.initiator}>.`);
         }
     }
@@ -182,4 +188,8 @@ ${PREAMBLE[type]}
         });
 
     await client.channels.send(environ.LOG_CHANNEL_ID, `<@${user.id}> opened a ${name} ticket at <#${channel.id}>`);
+
+    if (type == TicketChannelType.BOT_INVITE) {
+        await bot_invite_app(client, initial_message, user.id, channel.id);
+    }
 }

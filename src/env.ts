@@ -10,7 +10,8 @@ const ENV_VARS = z.object({
     RULES_CHANNEL: z.string(),
     LOG_CHANNEL_ID: z.string(),
     VERIFIED_ROLE: z.string(),
-    MAX_TICKETS_PER_USER: z.coerce.number()
+    MAX_TICKETS_PER_USER: z.coerce.number(),
+    BOT_TESTS_CATEGORY: z.string()
 });
 
 export type Environ = z.infer<typeof ENV_VARS>;

@@ -17,8 +17,9 @@ export enum ErrorType {
     TICKETS_ONLY = "This command can only be used in a ticket channel.",
     UNAUTHORIZED = "You are not authorized to use this command.",
     SAME_STATE = "This command won't change anything now.",
+    REPLY_CHAIN_INVALID = "Input is invalid. Please try again.",
 }
 
-export async function send_error(message: Message, type: ErrorType | string) {
-    await message.reply(`Error: ${type}`);
+export async function send_error(message: Message, type: ErrorType | string): Promise<Message> {
+    return await message.reply(`Error: ${type}`);
 }

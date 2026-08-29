@@ -1,3 +1,7 @@
+process.on("uncaughtException", console.error);
+process.on("unhandledRejection", console.error);
+
+
 import { environ, load_env } from './env.js';
 import { database_close, database_init } from './db/db.js';
 
@@ -10,6 +14,7 @@ import { parse_command } from './commands.js';
 import load_scripts from "./load_scripts.js";
 import { register_events } from './event.js';
 import cleanup from "node-cleanup";
+import { register_reply_chain_listener } from './features/reply_chain.js';
 
 
 cleanup(() => {
@@ -36,5 +41,6 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 register_events(client);
+register_reply_chain_listener(client);
 
 await client.login(environ.TOKEN);
