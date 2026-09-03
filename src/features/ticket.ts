@@ -6,6 +6,7 @@ import { ChannelType, Client, Events, Message, OverwriteType, PermissionFlags, r
 import { database } from "../db/db.js";
 import { ErrorType, is_admin, send_error, split_space } from "../util.js";
 import { bot_invite_app } from "./bots.js";
+import { Command, CommandGroup, PermissionLevel, register_command } from "../commands.js";
 
 enum TicketChannelType {
     ADMINISTRATIVE, BOT_INVITE
@@ -83,64 +84,96 @@ React with 🤖 to create a bot invite application.`,
             (await reaction.fetchMessage()).removeReaction(emoji, user.id);
         });
     });
-}
 
+    register_command(new CommandGroup(
+        "ticket",
+        "Ticket commands. Most of them are only usable in ticket channels.",
+        PermissionLevel.REGULAR,
+        [
+            new Command(
+                "close",
+                "Close and delete this ticket.",
+                PermissionLevel.ADMIN,
+                [],
+                () => async (client, message) => {
+                    let ticket = await check_ticket_channel(client, message);
+                    if (!ticket) return;
+                    await client.rest.delete(Routes.channel(message.channelId)); // ugly
+                    database
+                        .prepare<{channel_id: string}, unknown>(
+                            "DELETE FROM tickets WHERE channel_id = @channel_id"
+                        )
+                        .run({channel_id: message.channelId});
+                    await client.channels.send(environ.LOG_CHANNEL_ID, `<@${message.author.id}> has deleted the ticket channel opened by <@${ticket.initiator}>.`);
+                }
+            ),
+            new Command(
+                "reopen",
+                "Reopens a ticket channel after it has been finalized.",
+                PermissionLevel.REGULAR,
+                [],
+                () => async (client, message) => {
+                    let ticket = await check_ticket_channel(client, message);
+                    if (!ticket) return;
+                    if (!ticket.finalized) return void await send_error(message, ErrorType.SAME_STATE);
 
-export async function parse_ticket_command(client: Client, message: Message, content: string) {
-    let [subcommand, rest] = split_space(content);
-    if (["finalize", "reopen", "close"].includes(subcommand)) {
-        let data = database
-            .prepare<{channel_id: string}, {
-                initiator: string,
-                finalized: boolean
-            }>("SELECT initiator, finalized FROM tickets WHERE channel_id = @channel_id")
-            .get({channel_id: message.channelId});
-        if (!data) return await send_error(message, ErrorType.TICKETS_ONLY);
-        
-        let authorized = false;
-        if (data.initiator == message.author.id) authorized = true;
-        if (await is_admin(client, message.author.id)) authorized = true;
-        if (!authorized) return await send_error(message, ErrorType.UNAUTHORIZED);
-        
-        if (subcommand == "finalize") {
-            if (data.finalized) return await send_error(message, ErrorType.SAME_STATE);
-            
-            database
-                .prepare<{channel_id: string}>("UPDATE tickets SET finalized = TRUE WHERE channel_id = @channel_id")
-                .run({channel_id: message.channelId});
-            
-            await message.reply(parse_text(`===
-Ticket Finalized
-===
-This ticket has been finalized and locked.
-Reopen this ticket with \`@${client.user!.username} ticket reopen\`.`));
-            await client.channels.send(environ.LOG_CHANNEL_ID, `<@${message.author.id}> has finalized the ticket in <#${message.channelId}>`);
-        } else if (subcommand == "reopen") {
-            if (!data.finalized) return await send_error(message, ErrorType.SAME_STATE);
-
-            database
-                .prepare<{channel_id: string}>("UPDATE tickets SET finalized = FALSE WHERE channel_id = @channel_id")
-                .run({channel_id: message.channelId});
-            
-            await message.reply(parse_text(`===
+                    database
+                        .prepare<{channel_id: string}>("UPDATE tickets SET finalized = FALSE WHERE channel_id = @channel_id")
+                        .run({channel_id: message.channelId});
+                    
+                    await message.reply(parse_text(`===
 Ticket Reopened
 ===
 This ticket has been reopened.
 Finalize this ticket with \`@${client.user!.username} ticket finalize\`.`));
-            await client.channels.send(environ.LOG_CHANNEL_ID, `<@${message.author.id}> has reopened the ticket in <#${message.channelId}>`);
-        } else if (subcommand == "close") {
-            if (!data.finalized) return await send_error(message, "Ticket needs to be finalized to be deleted.");
-            if (!await is_admin(client, message.author.id)) return await send_error(message, ErrorType.UNAUTHORIZED);
+                    await client.channels.send(environ.LOG_CHANNEL_ID, `<@${message.author.id}> has reopened the ticket in <#${message.channelId}>`);
+                }
+            ),
+            new Command(
+                "finalize",
+                "Finalizes a ticket channel and prepares for closing.",
+                PermissionLevel.ADMIN,
+                [],
+                () => async (client, message) => {
+                    let ticket = await check_ticket_channel(client, message);
+                    if (!ticket) return;
+                    if (ticket.finalized) return void await send_error(message, ErrorType.SAME_STATE);
+            
+                    database
+                        .prepare<{channel_id: string}>("UPDATE tickets SET finalized = TRUE WHERE channel_id = @channel_id")
+                        .run({channel_id: message.channelId});
+                    
+                    await message.reply(parse_text(`===
+Ticket Finalized
+===
+This ticket has been finalized and locked.
+Reopen this ticket with \`@${client.user!.username} ticket reopen\`.`));
+                    await client.channels.send(environ.LOG_CHANNEL_ID, `<@${message.author.id}> has finalized the ticket in <#${message.channelId}>`);
+                }
+            )
+        ]
+    ))
+}
 
-            await client.rest.delete(Routes.channel(message.channelId)); // ugly
-            database
-                .prepare<{channel_id: string}, unknown>(
-                    "DELETE FROM tickets WHERE channel_id = @channel_id"
-                )
-                .run({channel_id: message.channelId});
-            await client.channels.send(environ.LOG_CHANNEL_ID, `<@${message.author.id}> has deleted the ticket channel opened by <@${data.initiator}>.`);
-        }
-    }
+async function check_ticket_channel(client: Client, message: Message): Promise<
+    {
+        initiator: string,
+        finalized: boolean
+    } | undefined
+> {
+    let data = database
+        .prepare<{channel_id: string}, {
+            initiator: string,
+            finalized: boolean
+        }>("SELECT initiator, finalized FROM tickets WHERE channel_id = @channel_id")
+        .get({channel_id: message.channelId});
+    if (!data) return void await send_error(message, ErrorType.TICKETS_ONLY);
+    
+    let authorized = false;
+    if (data.initiator == message.author.id) authorized = true;
+    if (await is_admin(client, message.author.id)) authorized = true;
+    if (!authorized) return void await send_error(message, ErrorType.UNAUTHORIZED);
+    return data;
 }
 
 

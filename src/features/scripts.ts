@@ -1,7 +1,130 @@
 import { Client, EmbedBuilder, GuildChannel, Message } from "@fluxerjs/core";
 import { parse_text } from "./scripted_messages.js";
-import { split_space } from "../util.js";
+import { ErrorType, send_error, split_space } from "../util.js";
 import { database } from "../db/db.js";
+import { Command, CommandGroup, PermissionLevel, register_command } from "../commands.js";
+import { keyof } from "zod";
+
+export default () => {
+    register_command(new CommandGroup(
+        "scripts",
+        "Commands related to scripted messages.",
+        PermissionLevel.ADMIN,
+        [
+            new Command(
+                "run",
+                "Invokes a script.",
+                PermissionLevel.ADMIN,
+                [
+                    {
+                        name: "script",
+                        description: "The ID of the script to run.",
+                        type: "str"
+                    }
+                ],
+                ({script: key}) => async (client, message) => {
+                    if (!(key in scripts)) {
+                        return void await send_error(message, ErrorType.NOT_FOUND);
+                    }
+                    let script = scripts[key];
+                    let msg = await message.reply(`Executing script ${key}.`);
+                    await script.func(client);
+                    await msg.reply("Finished executing script.");
+                }
+            ),
+            new Command(
+                "edit",
+                "Prefills a command that edits the scripted message.",
+                PermissionLevel.ADMIN,
+                [
+                    {
+                        name: "script",
+                        description: "The script ID to edit",
+                        type: "str"
+                    }
+                ],
+                ({script: key}) => async (client, message) => {
+                    if (!(key in scripts)) {
+                        return void await send_error(message, ErrorType.NOT_FOUND);
+                    }
+                    let text = get_scripted_message(key);
+                    let command = `<@${client.user!.id}> scripts finalize ${key}\n${text}`;
+                    await message.reply(command);
+                }
+            ),
+            new Command(
+                "info",
+                "Provides information about a script",
+                PermissionLevel.ADMIN,
+                [
+                    {
+                        name: "script",
+                        description: "The script ID to fetch information about.",
+                        type: "str"
+                    }
+                ],
+                ({script: key}) => async (client, message) => {
+                    if (!(key in scripts)) {
+                        return void await send_error(message, ErrorType.NOT_FOUND);
+                    }
+                    let script = scripts[key];
+                    let message_id = get_scripted_message_id(key);
+                    let text = get_scripted_message(key);
+                    let embed = new EmbedBuilder()
+                        .setTitle(`Script "${script.name}"`)
+                        .setDescription(script.description)
+                        .addFields({
+                            name: "Invocation",
+                            value: key,
+                        })
+                        .addFields({
+                            name: "Message",
+                            value: message_id ? `https://web.fluxer.app/channels/${
+                                (await client.channels.resolve(message_id.channel_id) as GuildChannel).guildId
+                            }/${message_id.channel_id}/${message_id.message_id}` : "N/A"
+                        })
+                        .addFields({
+                            name: "Text",
+                            value: text ?? "N/A"
+                        });
+                    await message.reply({
+                        embeds: [embed]
+                    })
+                }
+            ),
+            new Command(
+                "finalize",
+                "Finalize a script edit. This command is the output of the edit command",
+                PermissionLevel.ADMIN,
+                [
+                    {
+                        name: "script",
+                        description: "The script ID to finalize edits.",
+                        type: "str"
+                    },
+                    {
+                        name: "data",
+                        description: "The message to send.",
+                        type: "greedystr"
+                    }
+                ],
+                ({script: key, data}) => async (client, message) => {
+                    if (!(key in scripts)) {
+                        return void await send_error(message, ErrorType.NOT_FOUND);
+                    }
+                    upsert_scripted_message(key, data);
+                    await (await message.reply({
+                        embeds: [
+                            new EmbedBuilder()
+                                .setTitle("Script Edited")
+                                .setDescription(`Script updated to\n${data}\n\nPreview:`)
+                        ]
+                    })).reply(parse_text(data));
+                }
+            )
+        ]
+    ))
+}
 
 interface ScriptInfo {
     name: string,
@@ -23,64 +146,6 @@ export function register_script(
     console.log(`Registered script ${invoke}`);
 }
 
-export async function parse_scripts_command(
-    client: Client,
-    message: Message,
-    content: string
-) {
-    let [subcommand, rest] = split_space(content);
-
-    if (["run", "edit", "info", "finalize"].includes(subcommand)) {
-        let [key, r] = split_space(rest);
-        if (!(key in scripts)) {
-            await message.reply(`${key} is not a valid script!`);
-            return;
-        }
-        let script = scripts[key];
-        if (subcommand == "run") {
-            let msg = await message.reply(`Executing script ${key}.`);
-            await script.func(client);
-            await msg.reply("Finished executing script.");
-        } else if (subcommand == "edit") {
-            let text = get_scripted_message(key);
-            let command = `<@${client.user!.id}> scripts finalize ${key}\n${text}`;
-            await message.reply(command);
-        } else if (subcommand == "info") {
-            let message_id = get_scripted_message_id(key);
-            let text = get_scripted_message(key);
-            let embed = new EmbedBuilder()
-                .setTitle(`Script "${script.name}"`)
-                .setDescription(script.description)
-                .addFields({
-                    name: "Invocation",
-                    value: key,
-                })
-                .addFields({
-                    name: "Message",
-                    value: message_id ? `https://web.fluxer.app/channels/${
-                        (await client.channels.resolve(message_id.channel_id) as GuildChannel).guildId
-                    }/${message_id.channel_id}/${message_id.message_id}` : "N/A"
-                })
-                .addFields({
-                    name: "Text",
-                    value: text ?? "N/A"
-                });
-            await message.reply({
-                embeds: [embed]
-            })
-        } else if (subcommand == "finalize") {
-            console.log([rest, r]);
-            upsert_scripted_message(key, r);
-            await (await message.reply({
-                embeds: [
-                    new EmbedBuilder()
-                        .setTitle("Script Edited")
-                        .setDescription(`Script updated to\n${r}\n\nPreview:`)
-                ]
-            })).reply(parse_text(r));
-        }
-    }
-}
 
 export function upsert_scripted_message(
     id: string,

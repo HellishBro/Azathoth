@@ -9,12 +9,12 @@ load_env();
 await database_init();
 
 import { Client, Events, Guild } from '@fluxerjs/core';
-import { parse_command } from './commands.js';
 
 import load_scripts from "./load_scripts.js";
 import { register_events } from './event.js';
 import cleanup from "node-cleanup";
 import { register_reply_chain_listener } from './features/reply_chain.js';
+import { parse_message } from './commands.js';
 
 
 cleanup(() => {
@@ -37,7 +37,7 @@ client.on(Events.GuildCreate, async (guild: Guild) => {
 });
 
 client.on(Events.MessageCreate, async (message) => {
-  parse_command(client, message);
+  parse_message(client, message);
 });
 
 register_events(client);

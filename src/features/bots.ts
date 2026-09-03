@@ -1,5 +1,5 @@
 import { Client, EmbedBuilder, Message, PermissionFlags, PermissionsBitField, resolvePermissionsToBitfield } from "@fluxerjs/core";
-import { send_error, split_space } from "../util.js";
+import { split_space } from "../util.js";
 import { init_reply_chain, register_reply_chain, validate_id } from "./reply_chain.js";
 import { database } from "../db/db.js";
 import { Bot, BotType, fetch_bot, upsert_bot } from "../db/bots.js";
@@ -197,8 +197,4 @@ export default () => {
 
 export async function bot_invite_app(client: Client, starter_message: Message, initiator: string, channel_id: string) {
     await init_reply_chain(starter_message, "bot_invite_app", initiator);
-}
-
-export async function parse_bot_db_command(client: Client, message: Message, content: string) {
-    let [subcommand, rest] = split_space(content);
 }
