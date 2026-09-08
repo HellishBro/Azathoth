@@ -18,7 +18,8 @@ export enum ErrorType {
     UNAUTHORIZED = "You are not authorized to use this command.",
     SAME_STATE = "This command won't change anything now.",
     REPLY_CHAIN_INVALID = "Input is invalid. Please try again.",
-    NOT_FOUND = "Cannot find the specified resource."
+    NOT_FOUND = "Cannot find the specified resource.",
+    BOT_TICKET = "This command can only be used in bot application tickets."
 }
 
 export async function send_error(message: Message, type: ErrorType | string): Promise<Message> {

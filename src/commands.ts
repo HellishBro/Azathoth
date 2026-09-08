@@ -8,7 +8,7 @@ export enum PermissionLevel {
 
 export type ArgumentType = (
     "str" | "int" | "float" | "user" | "channel" | "role" | "snowflake" | "greedystr" |
-    { list: ArgumentType }
+    { list: ArgumentType } | { options: readonly string[] }
 )
 
 type RawArgumentTypeT<T extends ArgumentType> = (
@@ -20,8 +20,8 @@ type RawArgumentTypeT<T extends ArgumentType> = (
     T extends "role"        ? Role      :
     T extends "snowflake"   ? string    :
     T extends "greedystr"   ? string    :
-    T extends { "list": infer B extends ArgumentType } ? RawArgumentTypeT<B>[] :
-    never
+    T extends { list: infer B extends ArgumentType } ? RawArgumentTypeT<B>[] :
+    T extends { options: infer I extends readonly string[] } ? I[number] : never
 )
 
 type ArgumentTypeT<T extends ArgumentType, optional extends boolean> = (
@@ -56,7 +56,8 @@ interface Arg<N extends string, T extends ArgumentType> {
 
 function type_display(type: ArgumentType): string {
     if (typeof type == "object") {
-        return type_display(type.list) + "[]";
+        if ("list" in type) return type_display(type.list) + "[]";
+        if ("options" in type) return type.options.join(" | ");
     }
     let mapping = {
         str: "string",
@@ -136,7 +137,7 @@ function get_command_candidate(
             if (command_like instanceof CommandGroup) {
                 if (rest) {
                     let subcandidate = get_command_candidate(rest, command_like.commands, user_permission);
-                    if (subcandidate) return [path + subcandidate[0], subcandidate[1]];
+                    if (subcandidate) return [(path == "" ? path : (path + " ")) + subcandidate[0], subcandidate[1]];
                 }
                 return [path, command_like];
             } else if (command_like instanceof Command) {
@@ -280,14 +281,23 @@ async function get_one<Optional extends boolean>(
     if (arg == "greedystr") {
         return ["", string];
     } else if (typeof arg == "object") {
-        value = [];
-        while (string) {
-            let [new_string, next_dat]: [
-                string,
-                ArgumentTypeT<typeof arg["list"], false>
-            ] = await get_one<false>(client, string, arg.list, false);
-            string = new_string;
-            value.push(next_dat);
+        if ("list" in arg) {
+            value = [];
+            while (string) {
+                let [new_string, next_dat]: [
+                    string,
+                    ArgumentTypeT<typeof arg["list"], false>
+                ] = await get_one<false>(client, string, arg.list, false);
+                string = new_string;
+                value.push(next_dat);
+            }
+        } else if ("options" in arg) {
+            [value, string] = split_space(string);
+            if (!arg.options.includes(value)) {
+                throw new Error(`invalid option. Expected one of \`${arg.options.join("`, `")}\``);
+            }
+        } else {
+            throw new Error("Unknown type");
         }
     } else if (arg == "str") {
         let quote = string.charAt(0);
@@ -299,8 +309,9 @@ async function get_one<Optional extends boolean>(
             }
             value = first_match[0];
             string = string.substring(value.length).trim();
+        } else {
+            [value, string] = split_space(string);
         }
-        [value, string] = split_space(string);
     } else {
         let [next, new_string] = split_space(string);
         string = new_string;

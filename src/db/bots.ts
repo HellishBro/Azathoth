@@ -9,7 +9,8 @@ export interface Bot {
     owner: string,
     prefix: string,
     type: BotType,
-    registered: boolean
+    registered: boolean,
+    support_community: string | null
 }
 
 interface BotDB {
@@ -17,7 +18,8 @@ interface BotDB {
     owner: string,
     prefix: string,
     type: number,
-    registered: number
+    registered: number,
+    support_community: string | null
 }
 
 export interface BotLBStats {
@@ -38,7 +40,7 @@ export function fetch_bot(id: string): Bot | undefined {
     let dat = (
         database
             .prepare<{id: string}, BotDB>(
-                "SELECT id, owner, prefix, type, registered FROM bots WHERE id = @id"
+                "SELECT id, owner, prefix, type, registered, support_community FROM bots WHERE id = @id"
             )
             .get({id})
     );
@@ -46,13 +48,45 @@ export function fetch_bot(id: string): Bot | undefined {
     return {...dat, registered: dat.registered == 1};
 }
 
+
+export function get_total_bots(): number {
+    return (
+        database.prepare<{}, number>("SELECT COUNT(*) FROM bots").get({})
+    ) ?? 0;
+}
+
+export const PER_PAGE = 10;
+
+
+export function get_all_bots(sort: "insert" | "id" | "guilds", asc: boolean, page: number): Bot[] {
+    let asc_str = asc ? "ASC" : "DESC";
+
+    let select = "SELECT id, owner, prefix, type, registered, support_community FROM bots";
+    if (sort == "id") {
+        select = `${select} ORDER BY id ${asc_str}`;
+    }
+    if (sort == "guilds") {
+        select = `
+            ${select}
+            LEFT JOIN leaderboard_stats lb_stats ON lb_stats.id = bots.id
+            ORDER BY COALESCE(lb_stats.guilds, 0) ${asc_str}
+        `;
+    }
+    if (sort == "insert") {
+        select = `${select} ORDER BY ROWID ${asc_str}`;
+    }
+    select = `${select} LIMIT ${PER_PAGE} OFFSET ${page * PER_PAGE}`;
+    let dat = database.prepare<{}, BotDB>(select).all({});
+    return dat.map(i => ({...i, registered: i.registered == 1}));
+}
+
 export function upsert_bot(bot: Bot) {
     database
         .prepare<BotDB, unknown>(`
-            INSERT INTO bots (id, owner, prefix, type, registered)
-            VALUES (@id, @owner, @prefix, @type, @registered)
+            INSERT INTO bots (id, owner, prefix, type, registered, support_community)
+            VALUES (@id, @owner, @prefix, @type, @registered, @support_community)
             ON CONFLICT (id) DO UPDATE SET
-            owner = @owner, prefix = @prefix, type = @type, registered = @registered
+                owner = @owner, prefix = @prefix, type = @type, registered = @registered, support_community = @support_community
             WHERE id = @id
         `)
         .run({

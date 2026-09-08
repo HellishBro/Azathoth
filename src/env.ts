@@ -7,11 +7,13 @@ const ENV_VARS = z.object({
     TICKETS_CATEGORY: z.string(),
     DATABASE: z.string(),
     ADMIN_ROLE_ID: z.string(),
+    BOT_ROLE_ID: z.string(),
     RULES_CHANNEL: z.string(),
     LOG_CHANNEL_ID: z.string(),
     VERIFIED_ROLE: z.string(),
     MAX_TICKETS_PER_USER: z.coerce.number(),
-    BOT_TESTS_CATEGORY: z.string()
+    BOT_TESTS_CATEGORY: z.string(),
+    SURROGATE_HUMAN_FLUXER_USER_TOKEN: z.string()
 });
 
 export type Environ = z.infer<typeof ENV_VARS>;

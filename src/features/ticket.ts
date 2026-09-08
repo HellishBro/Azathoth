@@ -4,12 +4,12 @@ import { parse_text, run_script } from "./scripted_messages.js";
 import { with_client } from "../event.js";
 import { ChannelType, Client, Events, Message, OverwriteType, PermissionFlags, resolvePermissionsToBitfield, Routes, User } from "@fluxerjs/core";
 import { database } from "../db/db.js";
-import { ErrorType, is_admin, send_error, split_space } from "../util.js";
-import { bot_invite_app } from "./bots.js";
+import { ErrorType, is_admin, send_error } from "../util.js";
 import { Command, CommandGroup, PermissionLevel, register_command } from "../commands.js";
+import { init_reply_chain } from "./reply_chain.js";
 
-enum TicketChannelType {
-    ADMINISTRATIVE, BOT_INVITE
+export enum TicketChannelType {
+    ADMINISTRATIVE = 0, BOT_INVITE = 1
 }
 
 let DISPLAY: {[key in TicketChannelType]: string};
@@ -139,33 +139,41 @@ Finalize this ticket with \`@${client.user!.username} ticket finalize\`.`));
                     if (!ticket) return;
                     if (ticket.finalized) return void await send_error(message, ErrorType.SAME_STATE);
             
-                    database
-                        .prepare<{channel_id: string}>("UPDATE tickets SET finalized = TRUE WHERE channel_id = @channel_id")
-                        .run({channel_id: message.channelId});
-                    
-                    await message.reply(parse_text(`===
-Ticket Finalized
-===
-This ticket has been finalized and locked.
-Reopen this ticket with \`@${client.user!.username} ticket reopen\`.`));
-                    await client.channels.send(environ.LOG_CHANNEL_ID, `<@${message.author.id}> has finalized the ticket in <#${message.channelId}>`);
+                    await finalize_ticket_channel(client, message, message.channelId);
                 }
             )
         ]
     ))
 }
 
-async function check_ticket_channel(client: Client, message: Message): Promise<
+
+export async function finalize_ticket_channel(client: Client, initiation: Message, channel_id: string) {
+    database
+        .prepare<{channel_id: string}>("UPDATE tickets SET finalized = TRUE WHERE channel_id = @channel_id")
+        .run({channel_id});
+                    
+    await initiation.reply(parse_text(`===
+Ticket Finalized
+===
+This ticket has been finalized and locked.
+Reopen this ticket with \`@${client.user!.username} ticket reopen\`.`));
+    await client.channels.send(environ.LOG_CHANNEL_ID, `<@${initiation.author.id}> has finalized the ticket in <#${channel_id}>`);
+}
+
+
+export async function check_ticket_channel(client: Client, message: Message): Promise<
     {
         initiator: string,
-        finalized: boolean
+        finalized: boolean,
+        type: TicketChannelType
     } | undefined
 > {
     let data = database
         .prepare<{channel_id: string}, {
             initiator: string,
-            finalized: boolean
-        }>("SELECT initiator, finalized FROM tickets WHERE channel_id = @channel_id")
+            finalized: boolean,
+            type: number
+        }>("SELECT initiator, finalized, type FROM tickets WHERE channel_id = @channel_id")
         .get({channel_id: message.channelId});
     if (!data) return void await send_error(message, ErrorType.TICKETS_ONLY);
     
@@ -173,7 +181,7 @@ async function check_ticket_channel(client: Client, message: Message): Promise<
     if (data.initiator == message.author.id) authorized = true;
     if (await is_admin(client, message.author.id)) authorized = true;
     if (!authorized) return void await send_error(message, ErrorType.UNAUTHORIZED);
-    return data;
+    return {...data, type: data.type == 0 ? TicketChannelType.ADMINISTRATIVE : TicketChannelType.BOT_INVITE};
 }
 
 
@@ -223,6 +231,6 @@ ${PREAMBLE[type]}
     await client.channels.send(environ.LOG_CHANNEL_ID, `<@${user.id}> opened a ${name} ticket at <#${channel.id}>`);
 
     if (type == TicketChannelType.BOT_INVITE) {
-        await bot_invite_app(client, initial_message, user.id, channel.id);
+        await init_reply_chain(initial_message, "bot_invite_app", user.id);
     }
 }

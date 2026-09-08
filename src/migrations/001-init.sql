@@ -7,7 +7,8 @@ CREATE TABLE bots (
     owner TEXT NOT NULL,
     prefix TEXT NOT NULL,
     type INTEGER NOT NULL,
-    registered BOOLEAN NOT NULL
+    registered BOOLEAN NOT NULL,
+    support_community TEXT
 ); -- type: 0 standard bot; 1 user bot
 
 CREATE TABLE leaderboard_stats (
