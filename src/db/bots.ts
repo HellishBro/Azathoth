@@ -51,7 +51,7 @@ export function fetch_bot(id: string): Bot | undefined {
 
 export function get_total_bots(): number {
     return (
-        database.prepare<{}, number>("SELECT COUNT(*) FROM bots").get({})
+        database.prepare<{}, number>("SELECT COUNT(*) FROM bots").pluck().get({})
     ) ?? 0;
 }
 
@@ -93,6 +93,12 @@ export function upsert_bot(bot: Bot) {
             ...bot,
             registered: bot.registered ? 1 : 0
         });
+}
+
+export function delete_bot(bot: Bot) {
+    database.prepare<{id: string}, unknown>(`
+        DELETE FROM bots WHERE id = @id
+    `).run({id: bot.id});
 }
 
 export function fetch_leaderboard(id: string): BotLBStats | undefined {
@@ -138,4 +144,25 @@ export function upsert_bot_commands(commands: BotCommands) {
                 WHERE id = @id
         `)
         .run(commands);
+}
+
+
+export function set_bot_channel(bot_id: string, channel_id: string) {
+    database
+        .prepare<{bot_id: string, channel_id: string}, unknown>(`
+            INSERT INTO bot_channels (bot_id, channel_id)
+                VALUES (@bot_id, @channel_id)
+        `)
+        .run({bot_id, channel_id});
+}
+
+export function get_bot_channel(bot_id: string): string | undefined {
+    return (
+        database
+            .prepare<{bot_id: string}, string>(`
+                SELECT channel_id FROM bot_channels WHERE bot_id = @bot_id
+            `)
+            .pluck()
+            .get({bot_id})
+    );
 }

@@ -1,13 +1,14 @@
 import { ChannelType, Client, EmbedBuilder, Events, GuildMember, Message, OverwriteType, PermissionFlags, PermissionsBitField, resolvePermissionsToBitfield } from "@fluxerjs/core";
 import { init_reply_chain, register_reply_chain, validate_id } from "./reply_chain.js";
 import { database } from "../db/db.js";
-import { Bot, BotType, fetch_bot, get_all_bots, get_total_bots, PER_PAGE, upsert_bot } from "../db/bots.js";
+import { Bot, BotType, fetch_bot, get_all_bots, get_total_bots, PER_PAGE, set_bot_channel, upsert_bot } from "../db/bots.js";
 import { Command, CommandGroup, PermissionLevel, register_command } from "../commands.js";
 import { paged_response } from "./paged_response.js";
 import { check_ticket_channel, finalize_ticket_channel, TicketChannelType } from "./ticket.js";
 import { ErrorType, send_error } from "../util.js";
 import { with_client } from "../event.js";
 import { environ } from "../env.js";
+import { bot_left } from "./bot_left.js";
 
 const GLOBAL_BAD_PERMISSIONS: bigint[] = [
     PermissionFlags.Administrator,
@@ -118,18 +119,20 @@ register_reply_chain("standard_bot_invite", {
         let search = url.searchParams;
         let permissions = search.get("permissions") as string;
         let global_invite = new PermissionsBitField(permissions);
+        let bad_permissions: string[] = [];
         for (let permission of GLOBAL_BAD_PERMISSIONS) {
             if (global_invite.has(permission)) {
-                await last_message.reply(
-                    "Warning: Bots cannot have some privileged permissions in this guild. " +
-                    "The offending permissions will be turned off once the bot is invited."
-                );
-                break;
+                bad_permissions.push(new PermissionsBitField(permission).toArray()[0]);
             }
         }
-        global_invite = global_invite.remove(GLOBAL_BAD_PERMISSIONS);
+        if (bad_permissions.length) {
+            await last_message.reply(
+                "Warning: Bots cannot have some privileged permissions in this guild. " +
+                "The offending permissions will be turned off once the bot is invited: " +
+                bad_permissions.join(", ")
+            );
+        }
         let channel_ok = global_invite.remove(GLOBAL_BAD_PERMISSIONS);
-        global_invite = global_invite.remove(CHANNEL_OK_PERMISSIONS);
 
         database
             .prepare<{channel_id: string, permissions: string}, unknown>(
@@ -141,7 +144,7 @@ register_reply_chain("standard_bot_invite", {
         
         await finalize_bot_app(client, fetch_bot(id)!, stage.channel_id, {
             provisional_permissions: channel_ok,
-            invite_link: url.toString()
+            invite_link: get_invite(id, channel_ok)
         });
     }
 });
@@ -224,7 +227,7 @@ function get_bot_invite(channel_id: string): BotInviteTicket {
     return (
         database
             .prepare<{channel_id: string}, BotInviteTicket>(
-                "SELECT * FROM bot_invite_tickets WHERE channel_id = :channel_id"
+                "SELECT * FROM bot_invite_tickets WHERE channel_id = @channel_id"
             )
             .get({channel_id})
     )!;
@@ -291,8 +294,10 @@ export default () => {
                                 }`,
                                 value: `${
                                     bot.type == BotType.STANDARD ? "Standard" : "User"
-                                } Bot\nPrefix: \`${
-                                    bot.prefix
+                                } Bot\nUser: <@${
+                                    bot.id
+                                }>\nPrefix: \`${
+                                    bot.prefix == `<@${bot.id}>` ? "@mention" : bot.prefix
                                 }\`\nOwner: <@${
                                     bot.owner
                                 }>\nSupport: ${
@@ -325,6 +330,7 @@ export default () => {
 
                             await invite_bot(
                                 client,
+                                message.author.id,
                                 get_bot_invite(message.channelId)
                             );
                         }
@@ -358,9 +364,7 @@ export default () => {
                             let bot = fetch_bot(get_bot_invite(message.channelId).bot_attached)!;
                             await finalize_bot_app(client, bot, message.channelId, {
                                 provisional_permissions: resolved,
-                                invite_link: `https://web.fluxer.app/oauth2/authorize?client_id=${bot.id}&scope=bot&permissions=${
-                                    clean_permissions(resolved)
-                                }`
+                                invite_link: get_invite(bot.id, resolved)
                             });
                         }
                     )
@@ -396,6 +400,8 @@ export default () => {
                 topic: `For the <@${bot.id}> bot developed by <@${bot.owner}>. Prefix is ${bot.prefix}`
             });
 
+            set_bot_channel(member.id, channel.id);
+
             await channel.editPermission(bot.id, {
                 type: OverwriteType.Member,
                 allow: data.provisional_permissions
@@ -416,15 +422,33 @@ export default () => {
 
             delete invite_bot_queue[member.id];
         });
+    }),
+    with_client("Listening for leaving members", client => {
+        client.on(Events.GuildMemberRemove, async (member) => {
+            let bot = fetch_bot(member.id);
+            if (!bot) return;
+            await bot_left(client, bot);
+        });
     })
+}
+
+
+function get_invite(bot_id: string, permissions: PermissionsBitField): string {
+    return `https://web.fluxer.app/oauth2/authorize?client_id=${bot_id}&scope=bot&permissions=${clean_permissions(permissions)}`
 }
 
 
 let invite_bot_queue: Record<string, BotInviteTicket> = {};
 
 
-async function invite_bot(client: Client, ticket: BotInviteTicket) {
+async function invite_bot(client: Client, initiator: string, ticket: BotInviteTicket) {
     // TODO: use SURROGATE_HUMAN_FLUXER_USER_TOKEN to automatically invite bot. but meanwhile
-    await client.channels.send(ticket.channel_id, "Please manually click the invite link for now and invite the bot.");
+    await client.channels.send(
+        ticket.channel_id,
+        `Please manually click the invite link for now and invite the bot.\n${
+            get_invite(ticket.bot_attached, new PermissionsBitField(ticket.provisional_permissions))
+        }`
+    );
+    await client.channels.send(environ.LOG_CHANNEL_ID, `<@${initiator}> is inviting the bot <@${ticket.bot_attached}> with permissions ${new PermissionsBitField(ticket.provisional_permissions).toArray().join(", ")}`);
     invite_bot_queue[ticket.bot_attached] = ticket;
 }

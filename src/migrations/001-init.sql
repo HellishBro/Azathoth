@@ -11,6 +11,12 @@ CREATE TABLE bots (
     support_community TEXT
 ); -- type: 0 standard bot; 1 user bot
 
+CREATE TABLE bot_channels (
+    bot_id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL,
+    FOREIGN KEY (bot_id) REFERENCES bots (id) ON DELETE CASCADE
+);
+
 CREATE TABLE leaderboard_stats (
     id TEXT PRIMARY KEY,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
