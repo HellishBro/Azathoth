@@ -1,4 +1,4 @@
-import { ChannelType, Client, EmbedBuilder, Events, GuildMember, Message, OverwriteType, PermissionFlags, PermissionsBitField, resolvePermissionsToBitfield } from "@fluxerjs/core";
+import { ChannelType, Client, EmbedBuilder, Events, GuildMember, Message, OverwriteType, parsePrefixCommand, PermissionFlags, PermissionsBitField, resolvePermissionsToBitfield } from "@fluxerjs/core";
 import { init_reply_chain, register_reply_chain, validate_id } from "./reply_chain.js";
 import { database } from "../db/db.js";
 import { Bot, BotType, fetch_bot, get_all_bots, get_total_bots, PER_PAGE, set_bot_channel, upsert_bot } from "../db/bots.js";
@@ -32,10 +32,13 @@ const CHANNEL_OK_PERMISSIONS: bigint[] = [
     PermissionFlags.ViewChannelMembers
 ] as const;
 
-function make_bot_app_embed(bot: Bot, standard_bot?: {
+interface AdditionalBotFields {
     provisional_permissions: PermissionsBitField,
+    provisional_prefix: string | undefined,
     invite_link: string   
-}): EmbedBuilder {
+};
+
+function make_bot_app_embed(bot: Bot, standard_bot?: AdditionalBotFields): EmbedBuilder {
     let embed = new EmbedBuilder();
     embed = embed.setTitle("Bot Application");
     embed = embed.setDescription(`Bot created by: <@${bot.owner}>`);
@@ -47,7 +50,9 @@ function make_bot_app_embed(bot: Bot, standard_bot?: {
         },
         {
             name: "Prefix",
-            value: bot.prefix,
+            value: standard_bot?.provisional_prefix ? (
+                standard_bot.provisional_prefix + " → " + bot.prefix
+            ) : bot.prefix,
             inline: true,
         },
         {
@@ -73,10 +78,7 @@ function make_bot_app_embed(bot: Bot, standard_bot?: {
     return embed;
 }
 
-async function finalize_bot_app(client: Client, bot: Bot, ticket_channel: string, standard_bot?: {
-    provisional_permissions: PermissionsBitField,
-    invite_link: string   
-}) {
+async function finalize_bot_app(client: Client, bot: Bot, ticket_channel: string, standard_bot?: AdditionalBotFields) {
     let embed = make_bot_app_embed(bot, standard_bot);
     let message = await client.channels.send(ticket_channel, {
         content: `Admins can use \`@${client.user?.username} bot ticket accept\` to accept this bot invite application.`,
@@ -144,6 +146,7 @@ register_reply_chain("standard_bot_invite", {
         
         await finalize_bot_app(client, fetch_bot(id)!, stage.channel_id, {
             provisional_permissions: channel_ok,
+            provisional_prefix: prefix,
             invite_link: get_invite(id, channel_ok)
         });
     }
@@ -178,7 +181,7 @@ register_reply_chain("bot_invite_app", {
                 if (content.toLowerCase() == "none") return "none";
                 return URL.canParse(content) ? content : undefined;
             }
-        }
+        },
     ],
     callback: async (client, {
         type,
@@ -220,8 +223,35 @@ register_reply_chain("bot_invite_app", {
 interface BotInviteTicket {
     channel_id: string,
     bot_attached: string,
+    provisional_prefix: string,
     provisional_permissions: string
 }
+
+
+async function repeat_ok_message(client: Client, channel_id: string) {
+    let bot = fetch_bot(get_bot_invite(channel_id).bot_attached)!;
+    let prov = database
+        .prepare<{channel_id: string}, {
+            provisional_permissions: string,
+            provisional_prefix: string
+        }>(`
+            SELECT
+                provisional_permissions,
+                provisional_prefix
+            FROM
+                bot_invite_tickers
+            WHERE
+                channel_id = @channel_id
+        `)
+        .get({channel_id})!;
+    let resolved = new PermissionsBitField(prov.provisional_permissions);
+    await finalize_bot_app(client, bot, channel_id, {
+        provisional_permissions: resolved,
+        provisional_prefix: prov.provisional_prefix,
+        invite_link: get_invite(bot.id, resolved)
+    });
+}
+
 
 function get_bot_invite(channel_id: string): BotInviteTicket {
     return (
@@ -361,10 +391,54 @@ export default () => {
                                 )
                                 .run({channel_id: message.channelId, permissions: resolved.toString()});
                             
-                            let bot = fetch_bot(get_bot_invite(message.channelId).bot_attached)!;
-                            await finalize_bot_app(client, bot, message.channelId, {
-                                provisional_permissions: resolved,
-                                invite_link: get_invite(bot.id, resolved)
+                            await repeat_ok_message(client, message.channelId);
+                        }
+                    )
+                ]
+            ),
+            new CommandGroup(
+                "edit",
+                "Edits a bot.",
+                PermissionLevel.ADMIN,
+                [
+                    new Command(
+                        "prefix",
+                        "Edits a bot's working prefix.",
+                        PermissionLevel.ADMIN,
+                        [
+                            {
+                                name: "bot",
+                                description: "The ID of the bot to edit.",
+                                type: "snowflake"
+                            },
+                            {
+                                name: "prefix",
+                                description: "The new prefix.",
+                                type: "greedystr"
+                            }
+                        ],
+                        ({ bot: bot_id, prefix }) => async (client, message) => {
+                            let bot = fetch_bot(bot_id);
+                            if (bot == undefined) return void await send_error(message, ErrorType.NOT_FOUND);
+                            if (prefix == "@mention") prefix = `<@${bot_id}>`;
+                            bot.prefix = prefix;
+                            upsert_bot(bot);
+                            let d = database
+                                .prepare<{bot_attached: string}, number>(
+                                    "SELECT COUNT(*) FROM bot_invite_tickets WHERE bot_attached = @bot_attached"
+                                )
+                                .pluck()
+                                .get({bot_attached: bot_id});
+                            let text = `The prefix of the bot <@${bot_id}> has been changed to ${prefix}`;
+                            if ((d ?? 0) != 0) {
+                                text += "\n> [!WARNING]\n> This bot is active in application. Make sure to determine if its inviting prefix should also be changed.";
+                            }
+                            await message.reply({
+                                embeds: [
+                                    new EmbedBuilder()
+                                        .setTitle("Bot prefix changed!")
+                                        .setDescription(text)
+                                ]
                             });
                         }
                     )
@@ -443,11 +517,17 @@ let invite_bot_queue: Record<string, BotInviteTicket> = {};
 
 async function invite_bot(client: Client, initiator: string, ticket: BotInviteTicket) {
     // TODO: use SURROGATE_HUMAN_FLUXER_USER_TOKEN to automatically invite bot. but meanwhile
+    let text: string = "";
+    if (["!", "/"].includes(ticket.provisional_prefix)) {
+        text += `> [!WARNING]\n> this bot will be invited under the prefix \`${ticket.provisional_prefix}\`. Double check the bot's actual prefix and change prefix commands are correct.\n`
+    }
+
+    text += `Please manually click the invite link for now and invite the bot.\n${
+        get_invite(ticket.bot_attached, new PermissionsBitField(ticket.provisional_permissions))
+    }`;
     await client.channels.send(
         ticket.channel_id,
-        `Please manually click the invite link for now and invite the bot.\n${
-            get_invite(ticket.bot_attached, new PermissionsBitField(ticket.provisional_permissions))
-        }`
+        text
     );
     await client.channels.send(environ.LOG_CHANNEL_ID, `<@${initiator}> is inviting the bot <@${ticket.bot_attached}> with permissions ${new PermissionsBitField(ticket.provisional_permissions).toArray().join(", ")}`);
     invite_bot_queue[ticket.bot_attached] = ticket;

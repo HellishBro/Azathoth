@@ -43,6 +43,7 @@ CREATE TABLE bot_invite_tickets (
     channel_id TEXT PRIMARY KEY,
     bot_attached TEXT NOT NULL,
     provisional_permissions TEXT,
+    provisional_prefix TEXT,
     FOREIGN KEY (bot_attached) REFERENCES bots (id) ON DELETE CASCADE,
     FOREIGN KEY (channel_id) REFERENCES tickets (channel_id) ON DELETE CASCADE
 );

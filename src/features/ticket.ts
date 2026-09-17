@@ -192,11 +192,10 @@ async function create_ticket_channel(client: Client, user: User, type: TicketCha
         .get({initiator: user.id}) ?? 0;
     if (user_count >= environ.MAX_TICKETS_PER_USER) return;
     
-    let count = database.prepare<[], number>("SELECT COUNT(channel_id) + 1 FROM tickets").pluck().get() ?? 1;
     let guild = await client.guilds.resolve(environ.GUILD_ID)!;
     let channel = await guild.createChannel({
         type: ChannelType.GuildText,
-        name: `${user.username} (${count})`,
+        name: `${user.username} (${user_count})`,
         parent_id: environ.TICKETS_CATEGORY
     });
     await channel.editPermission(user.id, {
